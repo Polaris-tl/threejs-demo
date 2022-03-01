@@ -193,7 +193,7 @@ function loadCar(){
     });
 
     cameraTrack = getCameraTrack(); // 轨道动画
-    addSprite(0.5,9.5,9)
+    // addSprite(0.5,9.5,9)
     // https://threejs.org/examples/#webgl_loader_gltf_variants 动态切换已加载材质的示例
     // 自定义模型材质 https://threejs.org/examples/#webgl_custom_attributes   https://threejs.org/examples/#webgl_buffergeometry_custom_attributes_particles
   });
@@ -212,9 +212,24 @@ function getCameraTrack(){
 }
 
  // 添加标注点
-function addSprite(x:number = 1, y:number = 1, z:number = 1){
+function addSprite(x:number = 1, y:number = 1, z:number = 1, text: string){
+  const canvas = document.querySelector<HTMLCanvasElement>('#drawText');
+  if(!canvas) return
+  const ctx = canvas.getContext('2d');
+  if(!ctx) return
+  ctx.moveTo(0,0)
+  ctx.fillStyle = "rgb(255,255,0)";
+  ctx.font = "normal 40px Arial ";
+  ctx.fillText(text, 0, 40);
+  ctx.globalAlpha = 1;
+
+  // 将画布生成的图片作为贴图给精灵使用，并将精灵创建在设定好的位置
+  const texture = new THREE.Texture(canvas);
+  texture.needsUpdate = true;
+  
   const spriteMaterial = new SpriteMaterial({
-  map: new TextureLoader().load('images/地点.png'), //设置精灵纹理贴图
+  // map: new TextureLoader().load('images/地点.png'), //设置精灵纹理贴图
+  map: texture,
   transparent: true, //开启透明(纹理图片png有透明信息)
   });
   // 创建精灵模型对象，不需要几何体geometry参数
@@ -281,17 +296,9 @@ function onMouseClick(event:any){
   pointer.x = ( event.clientX / window.innerWidth ) * 2 - 1;
 	pointer.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
   raycaster.setFromCamera( pointer, camera );
-  const intersects: any = raycaster.intersectObjects( scene.children );
-  console.log(intersects)
-	intersects.forEach((item: any) => {
-    if(item.object && item.object.type == 'Sprite'){
-      // item.object.position.set(item.point.x, item.point.y,item.point.z)
-      console.log("sprite 点击事件")
-      if(flag){
-        flag=!flag
-      }
-      rotateTire()
-    }
-  })
+  const intersects: THREE.Intersection[] = raycaster.intersectObjects( scene.children, true );
+  if(intersects.length){
+    addSprite(intersects[0].point.x,intersects[0].point.y,intersects[0].point.z, 'asdasd')
+  }
 }
   
