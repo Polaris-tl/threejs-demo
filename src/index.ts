@@ -4,8 +4,9 @@ import Stats from 'stats.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader";
-import TWEEN from '@tweenjs/tween.js';
+import TWEEN, { Group } from '@tweenjs/tween.js';
 import options from './utils';
+import { BoxGeometry } from 'three';
 
 const { Scene, Vector3, SpriteMaterial, Sprite, PerspectiveCamera, PlaneGeometry, MeshPhongMaterial, WebGLRenderer, AxesHelper, Color, TextureLoader, MeshBasicMaterial, SphereGeometry, Mesh } = THREE
 
@@ -27,6 +28,15 @@ document.body.appendChild( stats.dom );
 const group = new THREE.Group()
 
 init();
+const box1 = new Mesh(new BoxGeometry(), new MeshPhongMaterial())
+const box2 = new Mesh(new BoxGeometry(), new MeshPhongMaterial())
+const group2 = new THREE.Group()
+group2.position.set(.5,.5,.5)
+box2.position.set(.5,.5,.5)
+
+group2.add(box2)
+box1.add(group2)
+scene.add(box1)
 animate(0)
 
 function init() {
@@ -86,8 +96,8 @@ function init() {
 
   loadCubeTexture()
   addDashLine()
-  loadCar()
-  loadCarEnv()
+  // loadCar()
+  // loadCarEnv()
 
   window.addEventListener( 'click', onMouseClick );
   window.addEventListener( 'resize', onWindowResize );
@@ -260,6 +270,8 @@ function animate(t: number) {
     //   }
     //   trackIndex++
     // }
+    // box1.rotation.y += 0.01
+    group2.rotation.y += 0.01
     group.rotateX(0.02)
     // group.rotation.x = rotateObj.value
     TWEEN.update();
