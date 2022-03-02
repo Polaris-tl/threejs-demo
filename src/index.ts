@@ -129,12 +129,15 @@ function addDashLine(){
     },
     vertexShader: /*glsl*/`
       attribute float size;
+      attribute float lineDistance;
       varying vec3 vColor;
       varying vec2 vUv;
       varying vec3 vPosition;
+      varying float vLineDistance;
       void main() {
         vUv = uv;
         vPosition = position;
+        vLineDistance = lineDistance;
         vColor = vec3(1.,0.,0.);
         gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
       }
@@ -143,23 +146,37 @@ function addDashLine(){
       varying vec3 vColor;
       varying vec2 vUv;
       varying vec3 vPosition;
+      varying float vLineDistance;
       uniform float time;
       void main() {
-        float scale = mod(vPosition.x + time*0.001,.4);
-        float final = step(scale,.2);
-        if (final > .5) discard;
+        // float scale = mod(vPosition.x + time*0.001,.4);
+        // float final = step(scale,.2);
+        // if (final > .5) discard;
+        if ( mod( vLineDistance + time * 0.001, .3 ) > .2 ) { discard;}
         gl_FragColor = vec4( 1., 0., 0., 1.0 );
       }
     `
   });
 
   const points = [];
-  points.push( new THREE.Vector3( - 10, 10, 0 ) );
+  points.push( new THREE.Vector3( 1, 1, 0 ) );
+  points.push( new THREE.Vector3( 0, 10, 0 ) );
   points.push( new THREE.Vector3( 10, 10, 0 ) );
 
   const geometry = new THREE.BufferGeometry().setFromPoints( points );
 
   const line = new THREE.Line( geometry, dashLineMaterial );
+  const positionAttribute = geometry.attributes.position;
+  const lineDistances = [ 0 ];
+  const _start = new Vector3();
+  const _end = new Vector3();
+  for ( let i = 1, l = positionAttribute.count; i < l; i ++ ) {
+    _start.fromBufferAttribute( positionAttribute, i - 1 );
+    _end.fromBufferAttribute( positionAttribute, i );
+    lineDistances[ i ] = lineDistances[ i - 1 ];
+    lineDistances[ i ] += _start.distanceTo( _end );
+  }
+  geometry.setAttribute( 'lineDistance', new THREE.Float32BufferAttribute( lineDistances, 1 ) );
   scene.add( line );
 }
 
