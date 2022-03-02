@@ -91,6 +91,7 @@ function init() {
 
   window.addEventListener( 'click', onMouseClick );
   window.addEventListener( 'resize', onWindowResize );
+  window.addEventListener( 'contextmenu', onContextMenu );
 }
 
 // 加载天空环境贴图
@@ -159,6 +160,15 @@ function addDashLine(){
   const geometry = new THREE.BufferGeometry().setFromPoints( points );
 
   const line = new THREE.Line( geometry, dashLineMaterial );
+  scene.add( line );
+}
+
+// 画一条线
+function drawLine(start: THREE.Vector3, end: THREE.Vector3){
+  const material = new THREE.LineDashedMaterial( { color: 0x0000ff, dashSize: 0.2,gapSize: 0.2}); 
+  const geometry = new THREE.BufferGeometry().setFromPoints( [start, end] );
+  const line = new THREE.Line( geometry, material );
+  line.computeLineDistances();
   scene.add( line );
 }
 
@@ -299,6 +309,29 @@ function onMouseClick(event:any){
   const intersects: THREE.Intersection[] = raycaster.intersectObjects( scene.children, true );
   if(intersects.length){
     addSprite(intersects[0].point.x,intersects[0].point.y,intersects[0].point.z, 'asdasd')
+  }
+}
+
+let pointsForLine: THREE.Vector3[] = []
+
+function onContextMenu(event:any) {
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  pointer.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+	pointer.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+  raycaster.setFromCamera( pointer, camera );
+  const intersects: THREE.Intersection[] = raycaster.intersectObjects( scene.children, true );
+  let x =0,y =0,z=0
+  if(intersects.length){
+    x = intersects[0].point.x
+    y = intersects[0].point.y
+    z = intersects[0].point.z
+  }
+  if(pointsForLine.length == 0 || pointsForLine.length > 1){
+    pointsForLine = [new Vector3(x,y,z)]
+  } else {
+    pointsForLine.push(new Vector3(x,y,z))
+    drawLine(pointsForLine[0], pointsForLine[1])
   }
 }
   
