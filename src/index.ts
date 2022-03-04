@@ -20,10 +20,18 @@ const mouse = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
 const left = document.getElementById('left')
 const right = document.getElementById('right')
+let carModel: any
+let envtexture: any
 const a = left?.clientWidth || 100
 const b = left?.clientHeight || 100
 const camera = new PerspectiveCamera( 45, (left?.clientWidth || 100) / (left?.clientHeight || 100), 1, 1000 );
 const camera2 = new PerspectiveCamera( 45, (right?.clientWidth || 100) / (right?.clientHeight || 100), 1, 1000 );
+const loader = new GLTFLoader(); // gltf-loader
+// loader 扩展
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath("utils/draco/");
+loader.setDRACOLoader(dracoLoader);
+// loader 扩展
 function aaa(){
   const scene: THREE.Scene = new Scene(); 
   const renderer = new WebGLRenderer( { antialias: true } );
@@ -149,23 +157,56 @@ function aaa(){
     effectFXAA.uniforms[ 'resolution' ].value.set( 1 / a, 1 / b );
     composer.addPass( effectFXAA );
 
+    loadCar() 
     renderer.domElement.style.touchAction = 'none';
     renderer.domElement.addEventListener( 'pointermove', onPointerMove );
+    renderer.domElement.addEventListener( 'click', onClick );
+    renderer.domElement.addEventListener( 'contextmenu', onRightClick );
     window.addEventListener( 'resize', onWindowResize );
+  }
+
+  function onRightClick(){
+    // debugger
+    const box1 = new Mesh(new BoxGeometry(10,10,10), new MeshPhongMaterial())
+    if(selectedObjects.length) { 
+      if (selectedObjects[0].isMesh) {
+        console.log(selectedObjects[0])
+        box1.position.copy(selectedObjects[0].position)
+        box1.quaternion.copy(selectedObjects[0].quaternion)
+        box1.matrix.copy(selectedObjects[0].matrix)
+        box1.matrixWorld.copy(selectedObjects[0].matrixWorld)
+        box1.matrixWorldNeedsUpdate = true
+        selectedObjects[0].add(box1)
+      }
+    }
+  }
+
+  function onClick (e: MouseEvent) {
+    const newMaterial = new THREE.MeshStandardMaterial({
+      color: 0xff7c04,
+      metalness:1,
+      roughness: 0.3,
+      envMapIntensity: 1,
+      envMap: envtexture
+    });
+    if(selectedObjects.length) {
+      console.log(selectedObjects[0])
+      if (selectedObjects[0].isMesh) {
+        selectedObjects[0].material = newMaterial; // 覆盖默认材质
+      }
+    }
   }
   
   function onPointerMove( event: any ) {
     if ( event.isPrimary === false ) return;
-    
     mouse.x = ( event.offsetX / a ) * 2 - 1;
     mouse.y = - ( event.offsetY / b ) * 2 + 1;
-    console.log(mouse)
     checkIntersection();
   }
 
   function checkIntersection() {
     raycaster.setFromCamera( mouse, camera );
-    const intersects = raycaster.intersectObject( scene, true );
+    const intersects = raycaster.intersectObject( carModel, true );
     if ( intersects.length > 0 ) {
       selectedObjects = [];
       selectedObjects.push( intersects[ 0 ].object );
@@ -181,10 +222,42 @@ function aaa(){
     new THREE.CubeTextureLoader().setPath( 'images/g1/' ).load(['px.jpg', 'nx.jpg','py.jpg', 'ny.jpg','pz.jpg', 'nz.jpg'],
     (texture) => {
       scene.background = texture;
+      envtexture = texture
     });
   }
 
 
+
+  // 加载汽车模型
+function loadCar(){
+  loader.load( 'models/modelDraco.gltf', function ( gltf ) {
+    carModel = gltf.scene;
+    console.log(carModel)
+    const newMaterial = new THREE.MeshStandardMaterial({
+      color: 0xff7c04,
+      metalness:1,
+      roughness: 0.3,
+      envMapIntensity: 1,
+      envMap: envtexture,
+    });
+    scene.add( carModel );
+    carModel.scale.set(0.1,0.1,0.1)
+    let aa:any
+    carModel.traverse( function ( object: any ) {
+      if ( object.isMesh ) object.castShadow = true;
+      // 600-3B.stp  65_ASM  600_ASM_30_ASM   red__qiangai  
+      if (object.name === '600_ASM_30_ASM') {
+        aa = object
+      }
+    });
+    console.log(aa)
+    aa.traverse(function ( object: any ) {
+      if (object.isMesh) {
+        object.material = newMaterial; // 覆盖默认材质
+      }
+    })
+  });
+}
 
   function animate(t: number) {
       stats.begin();
