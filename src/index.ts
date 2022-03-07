@@ -4,25 +4,29 @@ import Stats from 'stats.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader";
-import TWEEN, { Group } from '@tweenjs/tween.js';
-import options from './utils';
+import TWEEN from '@tweenjs/tween.js';
 import { BoxGeometry } from 'three';
 
-const { Scene, Vector3, SpriteMaterial, Sprite, PerspectiveCamera, PlaneGeometry, MeshPhongMaterial, WebGLRenderer, AxesHelper, Color, TextureLoader, MeshBasicMaterial, SphereGeometry, Mesh } = THREE
+
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { FXAAShader  } from 'three/examples/jsm/shaders/FXAAShader'
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { DotScreenPass } from 'three/examples/jsm/postprocessing/DotScreenPass.js';
+import { BloomPass } from 'three/examples/jsm/postprocessing/BloomPass.js';
+
+let composer: any = null
+let effectFXAA: any = null
+
+const { Scene, PerspectiveCamera, PlaneGeometry, MeshPhongMaterial, WebGLRenderer, AxesHelper, Color, Mesh } = THREE
 
 const scene: THREE.Scene = new Scene(); 
 const renderer = new WebGLRenderer( { antialias: true } );
 const camera = new PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 1000 );
 const controls = new OrbitControls( camera, renderer.domElement ); // 鼠标控制器
 const loader = new GLTFLoader(); // gltf-loader
-let envtexture: THREE.CubeTexture | null = null; // 环境贴图
-let carModel: THREE.Group | null = null // 汽车模型
-let carEnvBox: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial> | null = null // 汽车模型的环境贴图
-let motorTire: THREE.Mesh | null  = null // 车轱辘object
 let dashLineMaterial: THREE.ShaderMaterial | null = null // 虚线材质
-let cameraTrack: THREE.Vector3[] = [] // 相机动画的轨道数据
-let trackIndex = 0;
-const rotateObj = {value: Math.PI};
 const stats = new Stats(); // 性能分析
 document.body.appendChild( stats.dom );
 const group = new THREE.Group()
@@ -95,12 +99,154 @@ function init() {
   // 地面↑↑↑
 
   loadCubeTexture()
-  addDashLine()
-  // loadCar()
-  // loadCarEnv()
-
-  window.addEventListener( 'click', onMouseClick );
   window.addEventListener( 'resize', onWindowResize );
+
+  composer = new EffectComposer( renderer );
+  const renderPass = new RenderPass( scene, camera );
+  composer.addPass( renderPass );
+  // const bloomPass = new UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ), 1.1, 0.4, 0.99 );
+  // composer.addPass( bloomPass );
+
+  // 自定义后期处理器
+  const customPostprocessingShader = {
+    shader1: { // 实现径向模糊效果
+      uniforms: {
+          "tDiffuse": {type: "t", value: null},
+          "rPower": {type: "f", value: 0.2126},
+          "gPower": {type: "f", value: 0.7152},
+          "bPower": {type: "f", value: 0.0722}
+      },
+      vertexShader: /*glsl*/`
+        varying vec2 vUv;
+        void main(){
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /*glsl*/`
+        uniform float rPower;
+        uniform float gPower;
+        uniform float bPower;
+        uniform sampler2D tDiffuse;
+        varying vec2 vUv;
+
+        const float sampleDist = 1.0;
+        const float sampleStrength = 1.2; 
+
+        void main(){
+          // 灰度图
+          // vec4 texel = texture2D(tDiffuse, vUv);
+          // float final = texel.r * rPower + texel.g * gPower + texel.b * bPower;
+          // gl_FragColor = vec4(vec3(final), 1.0);
+
+          // 径向模糊01
+          // vec4 texel;
+          // vec2 dir = vec2(0.5) - vUv.xy;
+          // for (int j = 0; j < 10; ++j)
+          // {
+          //   //计算采样uv值：正常uv值+从中间向边缘逐渐增加的采样距离
+          //   vec2 uv = vUv.xy +  dir * float(j) * 0.005;
+          //   texel += texture2D(tDiffuse, uv);
+          // }
+          // texel *= 0.1;
+          // gl_FragColor = vec4(vec3(texel), 1.0);
+
+          // 径向模糊02
+          float samples[10];
+          samples[0] = -0.08;
+          samples[1] = -0.05;
+          samples[2] = -0.03;
+          samples[3] = -0.02;
+          samples[4] = -0.01;
+          samples[5] =  0.01;
+          samples[6] =  0.02;
+          samples[7] =  0.03;
+          samples[8] =  0.05;
+          samples[9] =  0.08;
+          vec2 dir = vec2(0.5) - vUv.xy;
+          float dist = sqrt(dir.x*dir.x + dir.y*dir.y); 
+          dir = dir/dist;
+          vec4 color = texture2D(tDiffuse,vUv); 
+          vec4 sum = color;
+          for (int i = 0; i < 10; i++){
+            sum += texture2D( tDiffuse, vUv + dir * samples[i] * sampleDist );
+          }
+          sum *= 1.0/11.0;
+          float t = dist * sampleStrength;
+          t = clamp( t ,0.0,1.0);
+
+          gl_FragColor = mix( color, sum, t );
+        }
+      `,
+    },
+    shader2: {
+      uniforms: {
+        tDiffuse: {type: "t", value:0, texture:null},
+        fX: {type: "f", value: 0.5},
+        fY: {type: "f", value: 0.5},
+        fExposure: {type: "f", value: 0.6},
+        fDecay: {type: "f", value: 0.93},
+        fDensity: {type: "f", value: 0.96},
+        fWeight: {type: "f", value: 0.4},
+        fClamp: {type: "f", value: 1.0}
+      },
+  
+      vertexShader: [
+        "varying vec2 vUv;",
+  
+        "void main() {",
+  
+          "vUv = vec2( uv.x, 1.0 - uv.y );",
+          "gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
+  
+        "}"
+      ].join("\n"),
+  
+      fragmentShader: [
+        "varying vec2 vUv;",
+        "uniform sampler2D tDiffuse;",
+  
+        "uniform float fX;",
+        "uniform float fY;",
+        "uniform float fExposure;",
+        "uniform float fDecay;",
+        "uniform float fDensity;",
+        "uniform float fWeight;",
+        "uniform float fClamp;",
+  
+        "const int iSamples = 20;",
+  
+        "void main()",
+        "{",
+          "vec2 deltaTextCoord = vec2(vUv - vec2(fX,fY));",
+          "deltaTextCoord *= 1.0 /  float(iSamples) * fDensity;",
+          "vec2 coord = vUv;",
+          "float illuminationDecay = 1.0;",
+          "vec4 FragColor = vec4(0.0);",
+  
+          "for(int i=0; i < iSamples ; i++)",
+          "{",
+            "coord -= deltaTextCoord;",
+            "vec4 texel = texture2D(tDiffuse, coord);",
+            "texel *= illuminationDecay * fWeight;",
+  
+            "FragColor += texel;",
+  
+            "illuminationDecay *= fDecay;",
+          "}",
+          "FragColor *= fExposure;",
+          "FragColor = clamp(FragColor, 0.0, fClamp);",
+          "gl_FragColor = FragColor;",
+        "}"
+      ].join("\n")
+    },
+  }
+  const shaderPass= new ShaderPass(customPostprocessingShader.shader1);
+  composer.addPass(shaderPass);
+
+  effectFXAA = new ShaderPass( FXAAShader );
+  effectFXAA.uniforms[ 'resolution' ].value.set( 1 / window.innerWidth, 1 / window.innerHeight );
+  composer.addPass( effectFXAA );
 }
 
 // 加载天空环境贴图
@@ -109,168 +255,14 @@ function loadCubeTexture(){
   new THREE.CubeTextureLoader().setPath( 'images/g1/' ).load(['px.jpg', 'nx.jpg','py.jpg', 'ny.jpg','pz.jpg', 'nz.jpg'],
   (texture) => {
     scene.background = texture;
-    envtexture = texture;
   });
 }
-
-// 加载汽车场景环境贴图
-function loadCarEnv(){
-  carEnvBox = new Mesh( new SphereGeometry( 0.1, 30, 30 ), new MeshBasicMaterial({
-    side: THREE.DoubleSide
-  }) )
-  carEnvBox.position.set(0,0,0)
-  carEnvBox.scale.set(700,700,-700)
-  scene.add( carEnvBox );
-  new TextureLoader().load( 'images/模型全景图.jpg' ,(texture) => {
-    if(carEnvBox){
-      carEnvBox.material.map = texture;
-      carEnvBox.material.needsUpdate = true
-    }
-  })
-}
-
-// 加载虚线
-function addDashLine(){
-  // 虚线着色器
-  dashLineMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-      time: { value: 1.0 },
-    },
-    vertexShader: /*glsl*/`
-      attribute float size;
-      varying vec3 vColor;
-      varying vec2 vUv;
-      varying vec3 vPosition;
-      void main() {
-        vUv = uv;
-        vPosition = position;
-        vColor = vec3(1.,0.,0.);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-      }
-    `,
-    fragmentShader: /*glsl*/`
-      varying vec3 vColor;
-      varying vec2 vUv;
-      varying vec3 vPosition;
-      uniform float time;
-      void main() {
-        float scale = mod(vPosition.x + time*0.001,.4);
-        float final = step(scale,.2);
-        if (final > .5) discard;
-        gl_FragColor = vec4( 1., 0., 0., 1.0 );
-      }
-    `
-  });
-
-  const points = [];
-  points.push( new THREE.Vector3( - 10, 10, 0 ) );
-  points.push( new THREE.Vector3( 10, 10, 0 ) );
-
-  const geometry = new THREE.BufferGeometry().setFromPoints( points );
-
-  const line = new THREE.Line( geometry, dashLineMaterial );
-  scene.add( line );
-}
-
-// 加载汽车模型
-function loadCar(){
-  loader.load( 'models/modelDraco.gltf', function ( gltf ) {
-    carModel = gltf.scene;
-    console.log(carModel)
-    scene.add( carModel );
-    const newMaterial = new THREE.MeshStandardMaterial({
-      color: 0xff7c04,
-      metalness: options.metalness,
-      roughness: options.roughness,
-      envMapIntensity: options.envMapIntensity,
-      envMap: envtexture,
-    });
-    carModel.scale.set(0.1,0.1,0.1)
-    carModel.traverse( function ( object: any ) {
-      if ( object.isMesh ) object.castShadow = true;
-      if (object.isMesh && object.name === '轮胎') {
-        // 通过给轮胎添加group父对象，并在render中旋转父对象以此来达到使得轮胎绕某一特定轴旋转的目的
-        console.log(object)
-        object.parent.add(group)
-        object.parent = group
-        group.add(object)
-        group.position.copy(object.position)
-        group.position.z += 15
-        object.position.set(0,0,20)
-        object.material = newMaterial; // 覆盖默认材质
-        motorTire = object
-      }
-    });
-
-    cameraTrack = getCameraTrack(); // 轨道动画
-    addSprite(0.5,9.5,9)
-    // https://threejs.org/examples/#webgl_loader_gltf_variants 动态切换已加载材质的示例
-    // 自定义模型材质 https://threejs.org/examples/#webgl_custom_attributes   https://threejs.org/examples/#webgl_buffergeometry_custom_attributes_particles
-  });
-}
-
-// 获取相机的初始轨道points
-function getCameraTrack(){
-  // 相机轨道路径
-  const cameraTrack = new THREE.CatmullRomCurve3(
-    [
-      new THREE.Vector3(-30, 12, 15),
-      new THREE.Vector3(-20,20,-20),
-      new THREE.Vector3(20,20,20),
-    ],true,'centripetal',0.4)
-  return cameraTrack.getSpacedPoints(500)
-}
-
- // 添加标注点
-function addSprite(x:number = 1, y:number = 1, z:number = 1){
-  const spriteMaterial = new SpriteMaterial({
-  map: new TextureLoader().load('images/地点.png'), //设置精灵纹理贴图
-  transparent: true, //开启透明(纹理图片png有透明信息)
-  });
-  // 创建精灵模型对象，不需要几何体geometry参数
-  const sprite = new Sprite(spriteMaterial);
-  sprite.scale.set(1, 1, 0); //精灵图大小
-  sprite.translateY(50);
-  sprite.position.set(x,y,z)
-  scene.add(sprite);  
-}
-
-let flag = false
-let iiii = 0
-
-// 旋转轮胎
-function rotateTire() {
-  new TWEEN.Tween(rotateObj)
-  .to({value: Math.PI*210/180}, 2000)
-  .easing(TWEEN.Easing.Quadratic.In)
-  .start()
-}
-
-// 车轱辘变换矩阵
-const transformMatrix = new THREE.Matrix4()
-// x/y/z轴旋转
-// const rotateX = new THREE.Matrix4().set(1,0,0,0,  0,Math.cos(0.2),Math.sin(.2),0, 0,-Math.sin(.2),Math.cos(.2),0, 0,0,0,1)
-// const rotateY = new THREE.Matrix4().set(Math.cos(0.2),0,-Math.sin(.2),0,  0,1,0,0, Math.sin(.2),0,Math.cos(0.2),0, 0,0,0,1)
-const rotateZ = new THREE.Matrix4().set(Math.cos(Math.PI/180),Math.sin(Math.PI/180),0,0,  -Math.sin(Math.PI/180),Math.cos(Math.PI/180),0,0, 0,0,1,0, 0,0,0,1)
- // x轴平移3
-const translate = new THREE.Matrix4().set(1,0,0,0.3, 0,1,0,0, 0,0,1,0, 0,0,0,1)
-transformMatrix.multiply(rotateZ.multiply(translate))
-
 
 function animate(t: number) {
     stats.begin();
-    renderer.render( scene, camera );
+    // renderer.render( scene, camera );
+    composer.render();
     requestAnimationFrame( animate );
-    // if(cameraTrack.length){
-    //   camera.lookAt(new Vector3())
-    //   cameraTrack[trackIndex] && camera.position.copy(cameraTrack[trackIndex])
-    //   if(trackIndex > cameraTrack.length - 1){
-    //     trackIndex = 0
-    //     cameraTrack = []
-    //   }
-    //   trackIndex++
-    // }
-    // box1.rotation.y += 0.01
     group2.rotation.y += 0.01
     group.rotateX(0.02)
     // group.rotation.x = rotateObj.value
@@ -286,24 +278,4 @@ function onWindowResize() {
   renderer.setSize( window.innerWidth, window.innerHeight );
 }
 
-// 添加鼠标交互事件
-function onMouseClick(event:any){
-  const raycaster = new THREE.Raycaster();
-  const pointer = new THREE.Vector2();
-  pointer.x = ( event.clientX / window.innerWidth ) * 2 - 1;
-	pointer.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
-  raycaster.setFromCamera( pointer, camera );
-  const intersects: any = raycaster.intersectObjects( scene.children );
-  console.log(intersects)
-	intersects.forEach((item: any) => {
-    if(item.object && item.object.type == 'Sprite'){
-      // item.object.position.set(item.point.x, item.point.y,item.point.z)
-      console.log("sprite 点击事件")
-      if(flag){
-        flag=!flag
-      }
-      rotateTire()
-    }
-  })
-}
   
