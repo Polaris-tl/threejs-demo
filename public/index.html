@@ -7,9 +7,65 @@
     <title>threejssss</title>
     <style>
         *{margin: 0;padding: 0;}
+        .ooo {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            background: #444;
+        }
+        .controll {
+            position: absolute;
+            right: 0;
+            top: 0;
+            background: #ffffffb5;
+            width: 350px;
+        }
+        .controll >div {
+            padding: 10px;
+            margin: 10px;
+            border: 1px solid #212121;
+        }
+        #material, #model {
+            margin-left: 24px;
+            cursor: pointer;
+        }
+        #material p:hover, #model p:hover {
+            background-color: aquamarine;
+        }
     </style>
 </head>
 <body>
-    
+    <div class="controll">
+        <div>
+            <p>
+                当前悬浮对象:
+                <p id="currentHovered" style="color: red;"></p>
+            </p>
+            <p>
+                当前选择:
+                <p id="currentSelected" style="color: red;"></p>
+            </p>
+        </div>
+        <div id="boom">
+            移动
+        </div>
+        <div>
+            更换材质
+            <div id="material">
+                <p data-idx="0">材质1</p>
+                <p data-idx="1">材质2</p>
+                <p data-idx="2">材质3</p>
+            </div>
+        </div>
+        <div>
+            更换模型
+            <div id="model">
+                <p data-idx="0">模型1</p>
+                <p data-idx="1">模型2</p>
+            </div>
+        </div>
+        
+    </div>
 </body>
 </html>
