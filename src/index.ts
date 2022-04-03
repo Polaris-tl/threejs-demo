@@ -1,133 +1,255 @@
 // https://github.com/mrdoob/three.js/blob/master/examples/webgl_animation_skinning_additive_blending.html
 import * as THREE from 'three'
-import Stats from 'stats.js';
+// import Stats from 'stats.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader";
 import TWEEN from '@tweenjs/tween.js';
-import options from './utils';
+// import options from './utils';
+import { Palette } from './palette/index'
 
-const { Scene, Vector3, SpriteMaterial, Sprite, PerspectiveCamera, PlaneGeometry, MeshPhongMaterial, WebGLRenderer, AxesHelper, Color, TextureLoader, MeshBasicMaterial, SphereGeometry, Mesh } = THREE
+const {
+	Scene,
+	Vector3,
+	SpriteMaterial,
+	Sprite,
+	PerspectiveCamera,
+	PlaneGeometry,
+	MeshPhongMaterial,
+	WebGLRenderer,
+	AxesHelper,
+	Color,
+	TextureLoader,
+	MeshBasicMaterial,
+	SphereGeometry,
+	Mesh,
+} = THREE
 
-const scene: THREE.Scene = new Scene(); 
-const renderer = new WebGLRenderer( { antialias: true } );
-const camera = new PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 1000 );
-const controls = new OrbitControls( camera, renderer.domElement ); // 鼠标控制器
-const loader = new GLTFLoader(); // gltf-loader
-let envtexture: THREE.CubeTexture | null = null; // 环境贴图
+const scene: THREE.Scene = new Scene()
+const renderer = new WebGLRenderer({ antialias: true })
+const camera = new PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000)
+const controls = new OrbitControls(camera, renderer.domElement) // 鼠标控制器
+const loader = new GLTFLoader() // gltf-loader
+let envtexture: THREE.CubeTexture | null = null // 环境贴图
 let carModel: THREE.Group | null = null // 汽车模型
 let carEnvBox: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial> | null = null // 汽车模型的环境贴图
-let motorTire: THREE.Mesh | null  = null // 车轱辘object
+let motorTire: THREE.Mesh | null = null // 车轱辘object
 let dashLineMaterial: THREE.ShaderMaterial | null = null // 虚线材质
 let cameraTrack: THREE.Vector3[] = [] // 相机动画的轨道数据
-let trackIndex = 0;
-const rotateObj = {value: Math.PI};
-const stats = new Stats(); // 性能分析
-document.body.appendChild( stats.dom );
+let trackIndex = 0
+const rotateObj = { value: Math.PI }
+// const stats = new Stats() // 性能分析
+
+// document.body.appendChild(stats.dom)
 const group = new THREE.Group()
 
-init();
+init()
 animate(0)
 
+const palette = new Palette(1000, 500)
+document.body.appendChild(palette.canvas)
+const a1 = document.querySelector('#a1')
+const a2 = document.querySelector('#a2')
+const a3 = document.querySelector('#a3')
+const a4 = document.querySelector('#a4')
+const a5 = document.querySelector('#a5')
+const dddd = document.querySelector<HTMLTextAreaElement>('#dddd') as any as HTMLTextAreaElement
+a1 &&
+	a1.addEventListener('click', () => {
+		palette.toggleEnable()
+	})
+a2 &&
+	a2.addEventListener('click', () => {
+		palette.currentMode = 'rect'
+	})
+a3 &&
+	a3.addEventListener('click', () => {
+		palette.currentMode = 'circle'
+	})
+a4 &&
+	a4.addEventListener('click', () => {
+		palette.currentMode = 'customLine'
+	})
+dddd &&
+	dddd.addEventListener('input', e => {
+		palette.onTexting(dddd.value, dddd.selectionStart, dddd.selectionEnd)
+	})
+dddd.addEventListener('keydown', e => {
+	// 包在setTimeout中是为了能够拿到光标的位置
+	// 不这样做的话，光标的位置会有延迟
+	setTimeout(() => {
+		palette.onTexting(dddd.value, dddd.selectionStart, dddd.selectionEnd)
+	}, 0)
+})
+a5 &&
+	a5.addEventListener('click', () => {
+		dddd.value = ''
+		dddd.style.opacity = '0.4'
+		dddd.focus()
+		const top = 200 * Math.random()
+		dddd.style.left = '300px'
+		dddd.style.top = `${top}px`
+		palette.currentMode = 'text'
+		palette.beforeText(300, top)
+	})
+
+let mouseIsDown = false
+let mouseDownPos = { x: 0, y: 0 }
+const onMouseDown = (e: any) => {
+	mouseIsDown = true
+	const rect = palette.canvas.getBoundingClientRect()
+	palette.beforeDraw({ x: e.clientX, y: e.clientY })
+	mouseDownPos.x = e.clientX
+	mouseDownPos.y = e.clientY
+}
+const onMouseUp = () => {
+	mouseIsDown = false
+	palette.afterDraw()
+}
+const onMouseMove = (e: MouseEvent) => {
+	if (palette.enabled && mouseIsDown) {
+		// debugger
+
+		const x = mouseDownPos.x
+		const y = mouseDownPos.y
+		const width = e.clientX - mouseDownPos.x
+		const height = e.clientY - mouseDownPos.y
+		const radius = Math.sqrt(Math.pow(width, 2) + Math.pow(height, 2))
+		palette.onDrawing({
+			x,
+			y,
+			width,
+			height,
+			path: [e.clientX, e.clientY],
+			radius,
+		})
+		return
+	}
+}
+
+palette.canvas.addEventListener('mousedown', e => {
+	onMouseDown(e)
+})
+palette.canvas.addEventListener('mouseup', () => {
+	onMouseUp()
+})
+palette.canvas.addEventListener('mousemove', e => {
+	onMouseMove(e)
+})
+const anim = () => {
+	palette.clearAll()
+	palette.shapes.forEach(shape => {
+		shape.draw(palette.ctx, palette.lastShape === shape, Date.now())
+	})
+	requestAnimationFrame(anim)
+}
+anim()
+
 function init() {
-  // scene↓↓↓
-  scene.background = new Color(0xa0a0a0)
-  var axes = new AxesHelper(70); // 坐标轴辅助器
-  scene.add(axes);
-  // scene↑↑↑
+	// scene↓↓↓
+	scene.background = new Color(0xa0a0a0)
+	var axes = new AxesHelper(70) // 坐标轴辅助器
+	scene.add(axes)
+	// scene↑↑↑
 
-  // loader 扩展
-  const dracoLoader = new DRACOLoader();
-  dracoLoader.setDecoderPath("utils/draco/");
-  loader.setDRACOLoader(dracoLoader);
-  // loader 扩展
+	// loader 扩展
+	const dracoLoader = new DRACOLoader()
+	dracoLoader.setDecoderPath('utils/draco/')
+	loader.setDRACOLoader(dracoLoader)
+	// loader 扩展
 
-  // camera↓↓↓
-  camera.position.set( -30, 12, 15 );
-  // camera↑↑↑
+	// camera↓↓↓
+	camera.position.set(-30, 12, 15)
+	// camera↑↑↑
 
-  // renderer↓↓↓
-  renderer.setPixelRatio( window.devicePixelRatio );
-  renderer.shadowMap.enabled = true;
-  renderer.setSize( window.innerWidth, window.innerHeight );
-  document.body.appendChild( renderer.domElement );
-  // renderer↑↑↑
-  // 鼠标控制器
-  controls.enablePan = true;
-  controls.enableZoom = true;
-  controls.target.set( 0, 0, 0 );
-  controls.update();
+	// renderer↓↓↓
+	renderer.setPixelRatio(window.devicePixelRatio)
+	renderer.shadowMap.enabled = true
+	renderer.setSize(window.innerWidth, window.innerHeight)
+	document.body.appendChild(renderer.domElement)
+	// renderer↑↑↑
+	// 鼠标控制器
+	controls.enablePan = true
+	controls.enableZoom = true
+	controls.target.set(0, 0, 0)
+	controls.update()
 
-  // 环境光↓↓↓
-  const hemiLight = new THREE.HemisphereLight( 0xffffff, 0x444444 );
-  hemiLight.position.set( 0, 20, 0 );
-  scene.add( hemiLight );
-  // 环境光↑↑↑
+	// 环境光↓↓↓
+	const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444)
+	hemiLight.position.set(0, 20, 0)
+	scene.add(hemiLight)
+	// 环境光↑↑↑
 
-  // 方向光↓↓↓
-  const dirLight = new THREE.DirectionalLight( 0xffffff );
-  dirLight.position.set( 3, 10, 10 );
-  dirLight.castShadow = true;
-  dirLight.shadow.camera.top = 2;
-  dirLight.shadow.camera.bottom = - 2;
-  dirLight.shadow.camera.left = - 2;
-  dirLight.shadow.camera.right = 2;
-  dirLight.shadow.camera.near = 0.1;
-  dirLight.shadow.camera.far = 40;
-  scene.add( dirLight );
-  // 方向光↑↑↑
+	// 方向光↓↓↓
+	const dirLight = new THREE.DirectionalLight(0xffffff)
+	dirLight.position.set(3, 10, 10)
+	dirLight.castShadow = true
+	dirLight.shadow.camera.top = 2
+	dirLight.shadow.camera.bottom = -2
+	dirLight.shadow.camera.left = -2
+	dirLight.shadow.camera.right = 2
+	dirLight.shadow.camera.near = 0.1
+	dirLight.shadow.camera.far = 40
+	scene.add(dirLight)
+	// 方向光↑↑↑
 
-  // 地面↓↓↓
-  const mesh = new THREE.Mesh( new PlaneGeometry( 100, 100 ), new MeshPhongMaterial( { color: 0x999999, depthWrite: false, transparent: true, opacity: 0.7 } ) );
-  mesh.rotation.x = - Math.PI / 2;
-  mesh.receiveShadow = true;
-  scene.add( mesh );
-  // 地面↑↑↑
+	// 地面↓↓↓
+	const mesh = new THREE.Mesh(
+		new PlaneGeometry(100, 100),
+		new MeshPhongMaterial({ color: 0x999999, depthWrite: false, transparent: true, opacity: 0.7 })
+	)
+	mesh.rotation.x = -Math.PI / 2
+	mesh.receiveShadow = true
+	scene.add(mesh)
+	// 地面↑↑↑
 
-  loadCubeTexture()
-  addDashLine()
-  loadCar()
-  loadCarEnv()
+	loadCubeTexture()
+	addDashLine()
+	loadCar()
+	loadCarEnv()
 
-  window.addEventListener( 'click', onMouseClick );
-  window.addEventListener( 'resize', onWindowResize );
-  window.addEventListener( 'contextmenu', onContextMenu );
+	window.addEventListener('click', onMouseClick)
+	window.addEventListener('resize', onWindowResize)
 }
 
 // 加载天空环境贴图
-function loadCubeTexture(){
-  //六张图片分别是朝前的（posz）、朝后的（negz）、朝上的（posy）、朝下的（negy）、朝右的（posx）和朝左的（negx）。
-  new THREE.CubeTextureLoader().setPath( 'images/g1/' ).load(['px.jpg', 'nx.jpg','py.jpg', 'ny.jpg','pz.jpg', 'nz.jpg'],
-  (texture) => {
-    scene.background = texture;
-    envtexture = texture;
-  });
+function loadCubeTexture() {
+	//六张图片分别是朝前的（posz）、朝后的（negz）、朝上的（posy）、朝下的（negy）、朝右的（posx）和朝左的（negx）。
+	new THREE.CubeTextureLoader()
+		.setPath('images/g1/')
+		.load(['px.jpg', 'nx.jpg', 'py.jpg', 'ny.jpg', 'pz.jpg', 'nz.jpg'], texture => {
+			scene.background = texture
+			envtexture = texture
+		})
 }
 
 // 加载汽车场景环境贴图
-function loadCarEnv(){
-  carEnvBox = new Mesh( new SphereGeometry( 0.1, 30, 30 ), new MeshBasicMaterial({
-    side: THREE.DoubleSide
-  }) )
-  carEnvBox.position.set(0,0,0)
-  carEnvBox.scale.set(700,700,-700)
-  scene.add( carEnvBox );
-  new TextureLoader().load( 'images/模型全景图.jpg' ,(texture) => {
-    if(carEnvBox){
-      carEnvBox.material.map = texture;
-      carEnvBox.material.needsUpdate = true
-    }
-  })
+function loadCarEnv() {
+	carEnvBox = new Mesh(
+		new SphereGeometry(0.1, 30, 30),
+		new MeshBasicMaterial({
+			side: THREE.DoubleSide,
+		})
+	)
+	carEnvBox.position.set(0, 0, 0)
+	carEnvBox.scale.set(700, 700, -700)
+	scene.add(carEnvBox)
+	new TextureLoader().load('images/模型全景图.jpg', texture => {
+		if (carEnvBox) {
+			carEnvBox.material.map = texture
+			carEnvBox.material.needsUpdate = true
+		}
+	})
 }
 
 // 加载虚线
-function addDashLine(){
-  // 虚线着色器
-  dashLineMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-      time: { value: 1.0 },
-    },
-    vertexShader: /*glsl*/`
+function addDashLine() {
+	// 虚线着色器
+	dashLineMaterial = new THREE.ShaderMaterial({
+		uniforms: {
+			time: { value: 1.0 },
+		},
+		vertexShader: /*glsl*/ `
       attribute float size;
       attribute float lineDistance;
       varying vec3 vColor;
@@ -142,7 +264,7 @@ function addDashLine(){
         gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
       }
     `,
-    fragmentShader: /*glsl*/`
+		fragmentShader: /*glsl*/ `
       varying vec3 vColor;
       varying vec2 vUv;
       varying vec3 vPosition;
@@ -155,116 +277,80 @@ function addDashLine(){
         if ( mod( vLineDistance + time * 0.001, .3 ) > .2 ) { discard;}
         gl_FragColor = vec4( 1., 0., 0., 1.0 );
       }
-    `
-  });
+    `,
+	})
 
-  const points = [];
-  points.push( new THREE.Vector3( 1, 1, 0 ) );
-  points.push( new THREE.Vector3( 0, 10, 0 ) );
-  points.push( new THREE.Vector3( 10, 10, 0 ) );
+	const points = []
+	points.push(new THREE.Vector3(-10, 10, 0))
+	points.push(new THREE.Vector3(10, 10, 0))
 
-  const geometry = new THREE.BufferGeometry().setFromPoints( points );
+	const geometry = new THREE.BufferGeometry().setFromPoints(points)
 
-  const line = new THREE.Line( geometry, dashLineMaterial );
-  const positionAttribute = geometry.attributes.position;
-  const lineDistances = [ 0 ];
-  const _start = new Vector3();
-  const _end = new Vector3();
-  for ( let i = 1, l = positionAttribute.count; i < l; i ++ ) {
-    _start.fromBufferAttribute( positionAttribute, i - 1 );
-    _end.fromBufferAttribute( positionAttribute, i );
-    lineDistances[ i ] = lineDistances[ i - 1 ];
-    lineDistances[ i ] += _start.distanceTo( _end );
-  }
-  geometry.setAttribute( 'lineDistance', new THREE.Float32BufferAttribute( lineDistances, 1 ) );
-  scene.add( line );
-}
-
-// 画一条线
-function drawLine(start: THREE.Vector3, end: THREE.Vector3){
-  const material = new THREE.LineDashedMaterial( { color: 0x0000ff, dashSize: 0.2,gapSize: 0.2}); 
-  const geometry = new THREE.BufferGeometry().setFromPoints( [start, end] );
-  const line = new THREE.Line( geometry, material );
-  line.computeLineDistances();
-  scene.add( line );
+	const line = new THREE.Line(geometry, dashLineMaterial)
+	scene.add(line)
 }
 
 // 加载汽车模型
-function loadCar(){
-  loader.load( 'models/modelDraco.gltf', function ( gltf ) {
-    carModel = gltf.scene;
-    console.log(carModel)
-    scene.add( carModel );
-    const newMaterial = new THREE.MeshStandardMaterial({
-      color: 0xff7c04,
-      metalness: options.metalness,
-      roughness: options.roughness,
-      envMapIntensity: options.envMapIntensity,
-      envMap: envtexture,
-    });
-    carModel.scale.set(0.1,0.1,0.1)
-    carModel.traverse( function ( object: any ) {
-      if ( object.isMesh ) object.castShadow = true;
-      if (object.isMesh && object.name === '轮胎') {
-        // 通过给轮胎添加group父对象，并在render中旋转父对象以此来达到使得轮胎绕某一特定轴旋转的目的
-        console.log(object)
-        object.parent.add(group)
-        object.parent = group
-        group.add(object)
-        group.position.copy(object.position)
-        group.position.z += 15
-        object.position.set(0,0,20)
-        object.material = newMaterial; // 覆盖默认材质
-        motorTire = object
-      }
-    });
+function loadCar() {
+	loader.load('models/modelDraco.gltf', function (gltf) {
+		carModel = gltf.scene
+		console.log(carModel)
+		scene.add(carModel)
+		const newMaterial = new THREE.MeshStandardMaterial({
+			color: 0xff7c04,
+			//   metalness: options.metalness,
+			//   roughness: options.roughness,
+			//   envMapIntensity: options.envMapIntensity,
+			envMap: envtexture,
+		})
+		carModel.scale.set(0.1, 0.1, 0.1)
+		carModel.traverse(function (object: any) {
+			if (object.isMesh) object.castShadow = true
+			if (object.isMesh && object.name === '轮胎') {
+				// 通过给轮胎添加group父对象，并在render中旋转父对象以此来达到使得轮胎绕某一特定轴旋转的目的
+				console.log(object)
+				object.parent.add(group)
+				object.parent = group
+				group.add(object)
+				group.position.copy(object.position)
+				group.position.z += 15
+				object.position.set(0, 0, 20)
+				object.material = newMaterial // 覆盖默认材质
+				motorTire = object
+			}
+		})
 
-    cameraTrack = getCameraTrack(); // 轨道动画
-    // addSprite(0.5,9.5,9)
-    // https://threejs.org/examples/#webgl_loader_gltf_variants 动态切换已加载材质的示例
-    // 自定义模型材质 https://threejs.org/examples/#webgl_custom_attributes   https://threejs.org/examples/#webgl_buffergeometry_custom_attributes_particles
-  });
+		cameraTrack = getCameraTrack() // 轨道动画
+		addSprite(0.5, 9.5, 9)
+		// https://threejs.org/examples/#webgl_loader_gltf_variants 动态切换已加载材质的示例
+		// 自定义模型材质 https://threejs.org/examples/#webgl_custom_attributes   https://threejs.org/examples/#webgl_buffergeometry_custom_attributes_particles
+	})
 }
 
 // 获取相机的初始轨道points
-function getCameraTrack(){
-  // 相机轨道路径
-  const cameraTrack = new THREE.CatmullRomCurve3(
-    [
-      new THREE.Vector3(-30, 12, 15),
-      new THREE.Vector3(-20,20,-20),
-      new THREE.Vector3(20,20,20),
-    ],true,'centripetal',0.4)
-  return cameraTrack.getSpacedPoints(500)
+function getCameraTrack() {
+	// 相机轨道路径
+	const cameraTrack = new THREE.CatmullRomCurve3(
+		[new THREE.Vector3(-30, 12, 15), new THREE.Vector3(-20, 20, -20), new THREE.Vector3(20, 20, 20)],
+		true,
+		'centripetal',
+		0.4
+	)
+	return cameraTrack.getSpacedPoints(500)
 }
 
- // 添加标注点
-function addSprite(x:number = 1, y:number = 1, z:number = 1, text: string){
-  const canvas = document.querySelector<HTMLCanvasElement>('#drawText');
-  if(!canvas) return
-  const ctx = canvas.getContext('2d');
-  if(!ctx) return
-  ctx.moveTo(0,0)
-  ctx.fillStyle = "rgb(255,255,0)";
-  ctx.font = "normal 40px Arial ";
-  ctx.fillText(text, 0, 40);
-  ctx.globalAlpha = 1;
-
-  // 将画布生成的图片作为贴图给精灵使用，并将精灵创建在设定好的位置
-  const texture = new THREE.Texture(canvas);
-  texture.needsUpdate = true;
-  
-  const spriteMaterial = new SpriteMaterial({
-  // map: new TextureLoader().load('images/地点.png'), //设置精灵纹理贴图
-  map: texture,
-  transparent: true, //开启透明(纹理图片png有透明信息)
-  });
-  // 创建精灵模型对象，不需要几何体geometry参数
-  const sprite = new Sprite(spriteMaterial);
-  sprite.scale.set(1, 1, 0); //精灵图大小
-  sprite.translateY(50);
-  sprite.position.set(x,y,z)
-  scene.add(sprite);  
+// 添加标注点
+function addSprite(x: number = 1, y: number = 1, z: number = 1) {
+	const spriteMaterial = new SpriteMaterial({
+		map: new TextureLoader().load('images/地点.png'), //设置精灵纹理贴图
+		transparent: true, //开启透明(纹理图片png有透明信息)
+	})
+	// 创建精灵模型对象，不需要几何体geometry参数
+	const sprite = new Sprite(spriteMaterial)
+	sprite.scale.set(1, 1, 0) //精灵图大小
+	sprite.translateY(50)
+	sprite.position.set(x, y, z)
+	scene.add(sprite)
 }
 
 let flag = false
@@ -272,10 +358,10 @@ let iiii = 0
 
 // 旋转轮胎
 function rotateTire() {
-  new TWEEN.Tween(rotateObj)
-  .to({value: Math.PI*210/180}, 2000)
-  .easing(TWEEN.Easing.Quadratic.In)
-  .start()
+	new TWEEN.Tween(rotateObj)
+		.to({ value: (Math.PI * 210) / 180 }, 2000)
+		.easing(TWEEN.Easing.Quadratic.In)
+		.start()
 }
 
 // 车轱辘变换矩阵
@@ -283,30 +369,46 @@ const transformMatrix = new THREE.Matrix4()
 // x/y/z轴旋转
 // const rotateX = new THREE.Matrix4().set(1,0,0,0,  0,Math.cos(0.2),Math.sin(.2),0, 0,-Math.sin(.2),Math.cos(.2),0, 0,0,0,1)
 // const rotateY = new THREE.Matrix4().set(Math.cos(0.2),0,-Math.sin(.2),0,  0,1,0,0, Math.sin(.2),0,Math.cos(0.2),0, 0,0,0,1)
-const rotateZ = new THREE.Matrix4().set(Math.cos(Math.PI/180),Math.sin(Math.PI/180),0,0,  -Math.sin(Math.PI/180),Math.cos(Math.PI/180),0,0, 0,0,1,0, 0,0,0,1)
- // x轴平移3
-const translate = new THREE.Matrix4().set(1,0,0,0.3, 0,1,0,0, 0,0,1,0, 0,0,0,1)
+const rotateZ = new THREE.Matrix4().set(
+	Math.cos(Math.PI / 180),
+	Math.sin(Math.PI / 180),
+	0,
+	0,
+	-Math.sin(Math.PI / 180),
+	Math.cos(Math.PI / 180),
+	0,
+	0,
+	0,
+	0,
+	1,
+	0,
+	0,
+	0,
+	0,
+	1
+)
+// x轴平移3
+const translate = new THREE.Matrix4().set(1, 0, 0, 0.3, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
 transformMatrix.multiply(rotateZ.multiply(translate))
 
-
 function animate(t: number) {
-    stats.begin();
-    renderer.render( scene, camera );
-    requestAnimationFrame( animate );
-    // if(cameraTrack.length){
-    //   camera.lookAt(new Vector3())
-    //   cameraTrack[trackIndex] && camera.position.copy(cameraTrack[trackIndex])
-    //   if(trackIndex > cameraTrack.length - 1){
-    //     trackIndex = 0
-    //     cameraTrack = []
-    //   }
-    //   trackIndex++
-    // }
-    group.rotateX(0.02)
-    // group.rotation.x = rotateObj.value
-    TWEEN.update();
-    dashLineMaterial && (dashLineMaterial.uniforms.time.value = t);
-    stats.end();
+	// stats.begin();
+	renderer.render(scene, camera)
+	requestAnimationFrame(animate)
+	// if(cameraTrack.length){
+	//   camera.lookAt(new Vector3())
+	//   cameraTrack[trackIndex] && camera.position.copy(cameraTrack[trackIndex])
+	//   if(trackIndex > cameraTrack.length - 1){
+	//     trackIndex = 0
+	//     cameraTrack = []
+	//   }
+	//   trackIndex++
+	// }
+	group.rotateX(0.02)
+	// group.rotation.x = rotateObj.value
+	TWEEN.update()
+	dashLineMaterial && (dashLineMaterial.uniforms.time.value = t)
+	// stats.end();
 };
 
 
